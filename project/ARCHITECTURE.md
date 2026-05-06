@@ -1,119 +1,255 @@
 # System Architecture
 
-**CEM501 Communication Skills for CEM -- Spring 2026**
-**Milestone M5 Deliverable**
+**CEM501 Communication Skills for CEM -- Spring 2026**  
+Hilal Esila Yağcıoğlu 
 
 ---
 
 ## System Overview
 
-[Write 2-3 sentences describing the overall purpose and design philosophy of your system. What problem does it solve? What are the key design principles (modularity, separation of concerns, etc.)?]
+The CEM501 Communication Agent is an AI-powered email management system designed for construction project managers. It automatically reads incoming project emails, classifies them by urgency (URGENT/ACTION/FYI/ARCHIVE), generates professional draft replies using Claude AI, and enables approval via Telegram before sending. The system is built on modular design principles — each component has a single responsibility and can be tested independently.
 
 ### Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Scheduler                          │
-│               (runs pipeline on interval)               │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       v
-┌──────────┐    ┌──────────────┐    ┌──────────────┐
-│  Reader  │───>│  Classifier  │───>│   Drafter    │
-│  (IMAP)  │    │   (LLM)      │    │   (LLM)      │
-└──────────┘    └──────────────┘    └──────┬───────┘
-                                          │
-                       ┌──────────────────┘
-                       v
-                ┌──────────────┐    ┌──────────────┐
-                │    Sender    │    │   Messenger   │
-                │   (SMTP)     │    │  (Telegram)   │
-                └──────────────┘    └──────────────┘
-                       │                    │
-                       v                    v
-                ┌──────────────────────────────────┐
-                │            Memory                │
-                │   (conversation history store)   │
-                └──────────────────────────────────┘
+┌─────────────────────────┐
+│       scheduler.py       │
+│  (every 30 min + 08:00) │
+└───────────┬─────────────┘
+            │
+            v
+┌───────────────────────────────────────────┐
+│                 agent.py                  │
+│                                           │
+│  reader.py ──> classifier ──> drafter.py  │
+│      │              │              │      │
+│   (IMAP)        (keywords)     (Claude)   │
+└───────────────────────┬───────────────────┘
+                        │
+            ┌───────────┴───────────┐
+            │                       │
+            v                       v
+┌───────────────────┐   ┌───────────────────┐
+│  shared_state.py  │   │    digest.py       │
+│  (pending drafts) │   │  (daily summary)   │
+└─────────┬─────────┘   └───────────────────┘
+          │
+          v
+┌───────────────────────────────────────┐
+│         telegram_channel.py           │
+│  /list → /approve_N → sender.py       │
+└─────────────────┬─────────────────────┘
+                  │
+                  v
+┌───────────────────────────────────────┐
+│              sender.py                │
+│           (SMTP → email sent)         │
+└─────────────────┬─────────────────────┘
+                  │
+                  v
+┌───────────────────────────────────────┐
+│              memory.py                │
+│          (SQLite — audit log)         │
+└───────────────────────────────────────┘
 ```
 
-[Update this diagram to reflect your actual architecture. Add or remove components as needed.]
+
 
 ---
+
+## ---
 
 ## Components
 
 ### Reader
-**File:** `reader.py`
-**Responsibility:** [Describe what this component does -- connects to IMAP server, fetches unread emails, parses headers and body, returns structured email objects.]
-**Key dependencies:** [e.g., imap_tools]
+
+- **File:** `reader.py`
+
+- **Responsibility:** Connects to Gmail via IMAP, fetches the 20 most recent emails from the CEM501 folder, parses sender, subject, date, and body preview.
+
+- **Key dependencies:** `imaplib`, `email`, `python-dotenv`
 
 ### Classifier
-**File:** `classifier.py`
-**Responsibility:** [Describe what this component does -- takes a parsed email and uses an LLM to classify it by type (RFI, submittal, schedule update, etc.) and urgency (high, medium, low).]
-**Key dependencies:** [e.g., anthropic or openai]
+
+- **File:** `reader.py` (assign_triage_category function)
+
+- **Responsibility:** Classifies each email into URGENT, ACTION, FYI, or ARCHIVE using keyword-based rules. URGENT keywords include "stop work", "urgent", "failed", "pump". ACTION keywords include "RFI", "approval", "review".
+
+- **Key dependencies:** Built-in Python string matching
 
 ### Drafter
-**File:** `drafter.py`
-**Responsibility:** [Describe what this component does -- takes a classified email and its conversation history, generates an appropriate draft response using an LLM with role-specific prompts.]
-**Key dependencies:** [e.g., anthropic or openai]
+
+- **File:** `drafter.py`
+
+- **Responsibility:** Generates professional draft email replies using Claude AI (claude-haiku-4-5). Takes email category, sender, subject, and preview as input and returns a context-appropriate reply.
+
+- **Key dependencies:** `anthropic`, `python-dotenv`
 
 ### Sender
-**File:** `sender.py`
-**Responsibility:** [Describe what this component does -- takes a finalized draft and sends it via SMTP, handles reply threading, CC lists, and delivery confirmation.]
-**Key dependencies:** [e.g., smtplib (standard library)]
+
+- **File:** `sender.py`
+
+- **Responsibility:** Sends approved drafts via SMTP. Two modes: interactive (y/n confirmation in terminal) and silent (for Telegram bot use). Includes rate limiting and sent_log.txt logging.
+
+- **Key dependencies:** `smtplib`, `python-dotenv`
+
+### Shared State
+
+- **File:** `shared_state.py`
+
+- **Responsibility:** Saves and loads pending drafts as a JSON file. Bridges [agent.py](http://agent.py) and telegram_[channel.py](http://channel.py) so drafts produced by the agent can be approved via Telegram.
+
+- **Key dependencies:** `json`
+
+### Telegram Bot
+
+- **File:** `channels/telegram_channel.py`
+
+- **Responsibility:** Two functions: (1) Field reports — receives messages from field workers, classifies and drafts email replies, sends on approval. (2) Draft approval — lists pending drafts from agent via /list, approves via /approve_N, discards via /skip_N.
+
+- **Key dependencies:** `python-telegram-bot`, `python-dotenv`
 
 ### Memory
-**File:** `memory.py`
-**Responsibility:** [Describe what this component does -- stores conversation threads, tracks email history per contact, provides context to the Drafter for follow-up emails.]
-**Key dependencies:** [e.g., json or sqlite3]
+
+- **File:** `memory.py`
+
+- **Responsibility:** SQLite database tracking all sent and received messages. Three tables: contacts, message_history, scheduled_tasks. Provides audit trail for all communications.
+
+- **Key dependencies:** `sqlite3`
+
+### Digest
+
+- **File:** `digest.py`
+
+- **Responsibility:** Generates a formatted morning summary of all emails by category. Saves to logs/ folder with timestamp.
+
+- **Key dependencies:** `datetime`
 
 ### Scheduler
-**File:** `scheduler.py`
-**Responsibility:** [Describe what this component does -- runs the read-classify-draft-send pipeline on a configurable interval, handles logging and error recovery.]
-**Key dependencies:** [e.g., schedule]
+
+- **File:** `scheduler.py`
+
+- **Responsibility:** Runs the agent pipeline automatically — daily digest at 08:00 and email check every 30 minutes. No manual intervention needed.
+
+- **Key dependencies:** `schedule`
+
+### Agent (Main Pipeline)
+
+- **File:** `agent.py`
+
+- **Responsibility:** Orchestrates the full pipeline — fetch → classify → digest → log → draft → save to shared state → Telegram alert. Supports --dry-run mode.
+
+- **Key dependencies:** All modules above
 
 ---
 
 ## Data Flow
 
-1. **Scheduler** triggers the pipeline at a configured interval (e.g., every 5 minutes).
-2. **Reader** connects to the IMAP server, fetches new unread emails, and returns structured email data.
-3. **Classifier** receives each email and calls the LLM API to determine email type and urgency.
-4. **Memory** is queried for any prior conversation context related to the sender or thread.
-5. **Drafter** receives the classified email plus conversation history and generates a draft response.
-6. [Optional: draft is sent to **Messenger** (Telegram) for human review/approval.]
-7. **Sender** dispatches the approved draft via SMTP.
-8. **Memory** stores the sent response for future context.
+1. **Scheduler** triggers [agent.py](http://agent.py) every 30 minutes
+
+2. **Reader** connects to Gmail CEM501 folder via IMAP, fetches emails
+
+3. **Classifier** categorizes each email (URGENT/ACTION/FYI/ARCHIVE)
+
+4. **Digest** generates morning summary, saves to logs/
+
+5. **Memory** logs all received emails to SQLite
+
+6. **Drafter** generates AI reply for URGENT and ACTION emails
+
+7. **Shared State** saves drafts to pending_drafts.json
+
+8. **Telegram Bot** receives alert, user runs /list to see drafts
+
+9. User runs /approve_N → **Sender** dispatches email via SMTP
+
+10. **Memory** logs sent email
+
+---
+
+## Design Decisions
+
+**Decision:** Keyword-based classification instead of LLM-based.
+
+**Context:** Keyword matching is faster, cheaper, and more predictable for construction-specific terminology. LLM classification adds latency and cost for every email.
+
+**Consequences:** Less flexible for novel email types, but reliable and free for standard CEM categories.
+
+---
+
+**Decision:** Human confirmation required before every send (via Telegram or terminal).
+
+**Context:** AI-generated emails can contain errors. In construction, a misdirected email can have legal and contractual consequences worth millions.
+
+**Consequences:** No emails sent without explicit user approval. Slower but safer.
+
+---
+
+**Decision:** Shared state via JSON file instead of database.
+
+**Context:** A simple JSON file allows [agent.py](http://agent.py) and telegram_[channel.py](http://channel.py) to share data without running in the same process. Easy to inspect and debug.
+
+**Consequences:** Not suitable for concurrent access by multiple users, but sufficient for a single-user agent.
 
 ---
 
 ## API Keys & Configuration
 
-All secrets are stored in a `.env` file (never committed to version control). See `.env.example` for the required variables.
-
 | Variable | Purpose |
-|----------|---------|
-| `ANTHROPIC_API_KEY` | LLM API access for classification and drafting |
-| `OPENAI_API_KEY` | Alternative/backup LLM API (if used) |
-| `EMAIL_ADDRESS` | IMAP/SMTP email account |
-| `EMAIL_PASSWORD` | App-specific password for email access |
-| `IMAP_SERVER` | Incoming mail server address |
-| `SMTP_SERVER` | Outgoing mail server address |
-| `SMTP_PORT` | SMTP port (typically 587 for TLS) |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot for notifications/approval (if used) |
+
+| ANTHROPIC_API_KEY | Claude AI for draft generation |
+
+| EMAIL_ADDRESS | Gmail account for IMAP/SMTP |
+
+| EMAIL_PASSWORD | App-specific password |
+
+| IMAP_SERVER | [imap.gmail.com](http://imap.gmail.com) |
+
+| SMTP_SERVER | [smtp.gmail.com](http://smtp.gmail.com) |
+
+| SMTP_PORT | 587 |
+
+| TELEGRAM_BOT_TOKEN | Telegram bot authentication |
+
+| TELEGRAM_CHAT_ID | Your Telegram chat ID for alerts |
+
+| PROJECT_MANAGER_EMAIL | Email address for Telegram-triggered sends |
 
 ---
 
-## Future Improvements
+ Current Status (Week 13)
 
-[List 2-4 improvements you would make if you had more time.]
+| Component | Status |
 
-- [ ] [e.g., Add support for email attachments (PDF parsing, image OCR)]
-- [ ] [e.g., Implement a web dashboard for reviewing drafts]
-- [ ] [e.g., Add multi-language support for cross-cultural communication]
-- [ ] [e.g., Fine-tune classification with project-specific training data]
+| Reader | ✅ Working |
+
+| Classifier | ✅ Working |
+
+| Drafter (Claude AI) | ✅ Working |
+
+| Sender | ✅ Working |
+
+| Shared State | ✅ Working |
+
+| Telegram Bot | ✅ Working |
+
+| Memory (SQLite) | ✅ Working |
+
+| Digest | ✅ Working |
+
+| Scheduler | ✅ Working |
 
 ---
 
-*CEM501 - Spring 2026 - Dr. Eyuphan Koc - Bogazici University*
+ Future Improvements (Week 14)
+
+- Improve classifier with LLM-based intent detection (not just keywords)
+
+- Add WhatsApp channel via Twilio
+
+- Add web dashboard for reviewing drafts
+
+- Fine-tune prompts with project-specific contract language
+
+- Add attachment parsing (PDF RFIs, submittal documents)
+

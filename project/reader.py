@@ -1,37 +1,5 @@
 import imaplib
 import email
-
-EMAIL = "esilayagcioglu@gmail.com"
-PASSWORD = "msduclxquwslddcs"
-
-def connect_and_list_subjects():
-    try:
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(EMAIL, PASSWORD)
-        mail.select("inbox")
-
-        status, messages = mail.search(None, "ALL")
-        mail_ids = messages[0].split()
-
-        print("Connected successfully!")
-        print(f"Total emails: {len(mail_ids)}")
-
-        for mail_id in mail_ids[-5:]:
-            status, msg_data = mail.fetch(mail_id, "(RFC822)")
-            for response_part in msg_data:
-                if isinstance(response_part, tuple):
-                    msg = email.message_from_bytes(response_part[1])
-                    print("Subject:", msg["subject"])
-
-        mail.logout()
-
-    except Exception as e:
-        print("ERROR:", e)
-
-if __name__ == "__main__":
-    connect_and_list_subjects()
-    import imaplib
-import email
 import os
 import re
 from email.header import decode_header
@@ -125,10 +93,13 @@ def assign_triage_category(subject, preview):
     text = f"{subject} {preview}".lower()
 
     urgent_keywords = [
-        "urgent", "asap", "immediately", "critical", "delay", "blocked",
-        "overdue", "deadline today", "issue", "problem", "risk", "accident",
-        "non-compliance", "stop work", "shutdown"
-    ]
+    "urgent", "asap", "immediately", "critical", "delay", "blocked",
+    "overdue", "deadline today", "issue", "problem", "risk", "accident",
+    "non-compliance", "stop work", "shutdown", "failed", "failure",
+    "pump", "water rising", "flood", "collapse", "injury", "fire",
+    "gas leak", "crack", "broke", "broken", "emergency", "danger",
+    "falling", "leak", "explosion", "stuck", "trapped"
+]
 
     action_keywords = [
     "action required",
