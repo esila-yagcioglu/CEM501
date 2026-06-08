@@ -46,10 +46,11 @@ async def handle_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from shared_state import load_drafts, remove_draft
     from sender import send_email_silent as send_email
 
-    text = update.message.text
+    # works both as /approve_1 and /approve 1
+    text = update.message.text.strip()
     try:
-        draft_id = int(text.split("_")[1])
-    except:
+        draft_id = int(text.replace("/approve_", "").replace("/approve", "").strip().split()[0])
+    except Exception:
         await update.message.reply_text("Usage: /approve_1, /approve_2, etc.")
         return
 
@@ -83,10 +84,10 @@ async def handle_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from shared_state import remove_draft
 
-    text = update.message.text
+    text = update.message.text.strip()
     try:
-        draft_id = int(text.split("_")[1])
-    except:
+        draft_id = int(text.replace("/skip_", "").replace("/skip", "").strip().split()[0])
+    except Exception:
         await update.message.reply_text("Usage: /skip_1, /skip_2, etc.")
         return
 
@@ -189,9 +190,14 @@ def run_bot():
     app.add_handler(CommandHandler("list", list_drafts))
     app.add_handler(CommandHandler("send", send_draft))
     app.add_handler(CommandHandler("cancel", cancel_draft))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # approve ve skip CommandHandler olarak eklendi — MessageHandler değil
+    app.add_handler(CommandHandler("approve", handle_approve))
+    app.add_handler(CommandHandler("skip", handle_skip))
     app.add_handler(MessageHandler(filters.Regex(r'^/approve_\d+$'), handle_approve))
     app.add_handler(MessageHandler(filters.Regex(r'^/skip_\d+$'), handle_skip))
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running. Press Ctrl+C to stop.")
     app.run_polling()

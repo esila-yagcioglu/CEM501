@@ -7,7 +7,7 @@ load_dotenv(override=True)
 
 def generate_digest(email_summaries):
     """Generate a morning digest from email summaries."""
-    
+
     urgent = [e for e in email_summaries if e["category"] == "URGENT"]
     action = [e for e in email_summaries if e["category"] == "ACTION"]
     fyi = [e for e in email_summaries if e["category"] == "FYI"]
@@ -50,8 +50,9 @@ def generate_digest(email_summaries):
 
 def save_digest(digest_text):
     """Save digest to logs folder."""
-    os.makedirs("logs", exist_ok=True)
-    filename = f"logs/digest_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+    logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    filename = os.path.join(logs_dir, f"digest_{datetime.now().strftime('%Y%m%d_%H%M')}.txt")
     with open(filename, "w", encoding="utf-8") as f:
         f.write(digest_text)
     print(f"Digest saved to {filename}")

@@ -11,7 +11,6 @@ load_dotenv()
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
-EMAIL_FETCH_COUNT = 20
 
 
 def decode_mime_words(text):
@@ -93,40 +92,26 @@ def assign_triage_category(subject, preview):
     text = f"{subject} {preview}".lower()
 
     urgent_keywords = [
-    "urgent", "asap", "immediately", "critical", "delay", "blocked",
-    "overdue", "deadline today", "issue", "problem", "risk", "accident",
-    "non-compliance", "stop work", "shutdown", "failed", "failure",
-    "pump", "water rising", "flood", "collapse", "injury", "fire",
-    "gas leak", "crack", "broke", "broken", "emergency", "danger",
-    "falling", "leak", "explosion", "stuck", "trapped"
-]
+        "urgent", "asap", "immediately", "critical", "delay", "blocked",
+        "overdue", "deadline today", "issue", "problem", "risk", "accident",
+        "non-compliance", "stop work", "shutdown", "failed", "failure",
+        "pump", "water rising", "flood", "collapse", "injury", "fire",
+        "gas leak", "crack", "broke", "broken", "emergency", "danger",
+        "falling", "leak", "explosion", "stuck", "trapped"
+    ]
 
     action_keywords = [
-    "action required",
-    "please review",
-    "please approve",
-    "approval",
-    "confirm",
-    "submit",
-    "send",
-    "respond",
-    "reply",
-    "update required",
-    "need your input",
-    "sign off",
-    "review",
-    "approve",
-    "rfi",
-    "request for information",
-    "decision required",
-    "clarification",
-    "discrepancy"
-]
+        "action required", "please review", "please approve", "approval",
+        "confirm", "submit", "send", "respond", "reply", "update required",
+        "need your input", "sign off", "review", "approve", "rfi",
+        "request for information", "decision required", "clarification",
+        "discrepancy", "action"
+    ]
 
     fyi_keywords = [
         "fyi", "for your information", "update", "attached", "meeting notes",
-        "minutes", "schedule", "progress report", "weekly report", "status update",
-        "notice", "information"
+        "minutes", "schedule", "progress report", "weekly report",
+        "status update", "notice", "information"
     ]
 
     archive_keywords = [
@@ -154,12 +139,7 @@ def assign_triage_category(subject, preview):
 
 
 def triage_priority(category):
-    order = {
-        "URGENT": 0,
-        "ACTION": 1,
-        "FYI": 2,
-        "ARCHIVE": 3
-    }
+    order = {"URGENT": 0, "ACTION": 1, "FYI": 2, "ARCHIVE": 3}
     return order.get(category, 4)
 
 
@@ -177,16 +157,21 @@ def fetch_recent_emails():
 
         mail.select("CEM501")
 
-        status, messages = mail.search(None, "ALL")
+        # Fetch UNSEEN emails only — no limit, no repeats
+        status, messages = mail.search(None, "UNSEEN")
         if status != "OK":
             print("Could not fetch emails.")
-        
             return []
 
         email_ids = messages[0].split()
-        recent_ids = email_ids[-EMAIL_FETCH_COUNT:]
 
-        for email_id in reversed(recent_ids):
+        if not email_ids:
+            print("No new (unseen) emails in CEM501 folder.")
+            return []
+
+        print(f"Found {len(email_ids)} unseen email(s).")
+
+        for email_id in reversed(email_ids):
             status, msg_data = mail.fetch(email_id, "(RFC822)")
             if status != "OK":
                 continue
@@ -242,5 +227,3 @@ def print_summary(email_summaries):
 if __name__ == "__main__":
     summaries = fetch_recent_emails()
     print_summary(summaries)
-
-    

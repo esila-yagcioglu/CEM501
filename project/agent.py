@@ -16,13 +16,24 @@ from telegram import Bot
 init_db()
 
 
-async def send_telegram_alert(urgent_emails, draft_count):
+async def send_telegram_alert(emails, draft_count):
     try:
         bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        message = f"🔴 {len(urgent_emails)} URGENT email(s) need attention:\n\n"
-        for e in urgent_emails:
-            message += f"• {e['subject'][:50]}\n"
+
+        urgent = [e for e in emails if e["category"] == "URGENT"]
+        action = [e for e in emails if e["category"] == "ACTION"]
+
+        message = ""
+        if urgent:
+            message += f"🔴 {len(urgent)} URGENT email(s):\n"
+            for e in urgent:
+                message += f"  • {e['subject'][:50]}\n"
+        if action:
+            message += f"\n🟡 {len(action)} ACTION email(s):\n"
+            for e in action:
+                message += f"  • {e['subject'][:50]}\n"
+
         message += f"\n📋 {draft_count} draft(s) ready for approval.\n"
         message += "Use /list to see drafts, /approve_N to send, /skip_N to discard."
         await bot.send_message(chat_id=chat_id, text=message)
@@ -41,11 +52,15 @@ def run_agent(dry_run=False):
     emails = fetch_recent_emails()
 
     if not emails:
-        print("No emails found.")
+        print("No new emails found.")
         return
 
     print_summary(emails)
-    print_digest(emails)
+
+    try:
+        print_digest(emails)
+    except Exception as e:
+        print(f"Digest error (non-critical): {e}")
 
     for email_data in emails:
         log_message(
@@ -77,10 +92,10 @@ def run_agent(dry_run=False):
     # Save drafts for Telegram approval
     save_drafts(drafts)
 
-    # Send Telegram alert
-    urgent_emails = [e for e in emails if e["category"] == "URGENT"]
-    if urgent_emails:
-        asyncio.run(send_telegram_alert(urgent_emails, len(drafts)))
+    # Send Telegram alert for URGENT and ACTION emails
+    notify_emails = [e for e in emails if e["category"] in ["URGENT", "ACTION"]]
+    if notify_emails:
+        asyncio.run(send_telegram_alert(notify_emails, len(drafts)))
 
     if dry_run:
         print("\n[3/3] DRY RUN MODE — Drafts saved for Telegram approval.")
